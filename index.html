@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>印章管理系统 | 实时同步版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0f2f6;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            padding: 1rem;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .app-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 2rem);
+            overflow: hidden;
+        }
+        .header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e9edf2;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            flex-shrink: 0;
+            background: white;
+        }
+        .title-area h1 { font-size: 1.4rem; background: linear-gradient(135deg, #1e3c72, #2a5298); background-clip: text; -webkit-background-clip: text; color: transparent; }
+        .title-area p { font-size: 0.75rem; color: #5b6e8c; margin-top: 2px; }
+        .sync-badge {
+            background: #e6f7e6; color: #2e7d32; padding: 4px 12px; border-radius: 30px;
+            font-size: 0.7rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .sync-badge.syncing { background: #fff3e0; color: #ed6c02; animation: pulse 1s infinite; }
+        .sync-badge.error { background: #ffebee; color: #c62828; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .btn {
+            border: none; padding: 6px 16px; border-radius: 40px; font-weight: 500;
+            font-size: 0.8rem; cursor: pointer; background: #f1f5f9;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary { background: #2c5f8a; color: white; }
+        .btn-success { background: #2e7d32; color: white; }
+        .btn-outline { border: 1px solid #cbd5e1; background: white; }
+        .search-section {
+            padding: 0.8rem 1.5rem;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            border-bottom: 1px solid #edf2f7;
+            flex-shrink: 0;
+        }
+        .search-box {
+            flex: 3; min-width: 260px; display: flex; align-items: center;
+            background: white; border: 1px solid #e2e8f0; border-radius: 60px;
+            padding: 0 14px;
+        }
+        .search-box input { border: none; padding: 8px 0; width: 100%; outline: none; font-size: 0.85rem; }
+        .search-hint { font-size: 0.7rem; color: #6c7a91; background: #f1f5f9; padding: 4px 12px; border-radius: 30px; }
+        .table-wrapper { flex: 1; overflow: auto; padding: 0 1rem; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .data-table th { background: #f8fafc; padding: 10px 8px; text-align: left; position: sticky; top: 0; z-index: 10; }
+        .data-table td { padding: 10px 8px; border-bottom: 1px solid #ecf3f9; }
+        .data-table tr:hover { background: #fafcff; cursor: context-menu; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 30px; font-size: 0.7rem; }
+        .status-borrowed { background: #ffedd5; color: #b45309; }
+        .status-returned { background: #dcfce7; color: #15803d; }
+        .cancellation-badge { display: inline-block; padding: 2px 10px; border-radius: 30px; font-size: 0.7rem; }
+        .cancelled { background: #fee2e2; color: #b91c1c; }
+        .active { background: #e0f2fe; color: #0369a1; }
+        .pagination-area {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.8rem 1.5rem; border-top: 1px solid #edf2f7;
+            flex-shrink: 0; flex-wrap: wrap;
+        }
+        .page-btn {
+            background: white; border: 1px solid #cbd5e1; padding: 4px 12px;
+            border-radius: 30px; cursor: pointer;
+        }
+        .page-btn:disabled { opacity: 0.5; }
+        .total-counter { background: #f1f5f9; padding: 4px 14px; border-radius: 40px; font-size: 0.8rem; }
+        .context-menu {
+            position: fixed; background: white; border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+            padding: 6px 0; width: 120px; z-index: 1000;
+        }
+        .context-menu div { padding: 8px 16px; cursor: pointer; }
+        .context-menu div:hover { background: #f1f5f9; }
+        .context-menu .menu-delete { color: #dc2626; }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center;
+            justify-content: center; z-index: 2000;
+        }
+        .modal {
+            background: white; width: 520px; max-width: 90%; max-height: 85vh;
+            border-radius: 24px; padding: 1.2rem 1.5rem; overflow-y: auto;
+        }
+        .modal .form-row { margin-bottom: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
+        .modal input, .modal select { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 16px; }
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+        .file-import-label { cursor: pointer; }
+        #excelInput { display: none; }
+        .empty-row td { text-align: center; padding: 48px 0; color: #94a3b8; }
+        .info-footer { font-size: 0.65rem; text-align: center; padding: 0.4rem; color: #94a3b8; border-top: 1px solid #edf2f7; flex-shrink: 0; }
+        .toast-msg {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: white; padding: 8px 20px; border-radius: 40px;
+            z-index: 3000; animation: fadeOut 2s forwards;
+        }
+        @keyframes fadeOut { 0% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+        .highlight { background: #fef9c3; border-radius: 4px; }
+    </style>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="app-container">
+    <div class="header">
+        <div class="title-area">
+            <h1>📋 印章管理系统</h1>
+            <p>GitHub实时同步 · 多人协作</p>
+        </div>
+        <div class="action-bar">
+            <span class="sync-badge" id="syncStatus">🌐 实时同步中</span>
+            <label class="btn btn-outline file-import-label">
+                📂 导入Excel
+                <input type="file" id="excelInput" accept=".xlsx,.xls">
+            </label>
+            <button class="btn btn-primary" id="exportBtn">📄 模板下载</button>
+            <button class="btn btn-success" id="addBtn">➕ 新增印章</button>
+        </div>
+    </div>
+
+    <div class="search-section">
+        <div class="search-box">
+            <span>🔍</span>
+            <input type="text" id="searchInput" placeholder="搜索所有字段...">
+        </div>
+        <button class="btn btn-outline" id="clearSearch">清除</button>
+        <span class="search-hint">✨ 全字段模糊搜索</span>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>印章编号</th><th>印章名字</th><th>印章类型</th><th>公章回执单</th><th>存放位置</th>
+                    <th>注销状态</th><th>注销章位置</th><th>借出状态</th><th>借出月份</th><th>借出人</th><th>处理人</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"><tr class="empty-row"><td colspan="11">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-area">
+        <div class="total-counter" id="totalCount">共 0 枚</div>
+        <div id="pageInfo">第1/1页</div>
+        <div><button class="page-btn" id="prevBtn" disabled>‹ 上一页</button><button class="page-btn" id="nextBtn" disabled>下一页 ›</button></div>
+    </div>
+    <div class="info-footer">
+        💡 右键点击任意行 → 修改/删除 | 所有修改自动同步到GitHub，多人实时共享
+    </div>
+</div>
+
+<script>
+    // ==================== GitHub 配置（已配置好） ====================
+    const GITHUB_USERNAME = 'lucy1199';
+    const DATA_REPO = 'seal-data';
+    const ISSUE_NUMBER = 1;
+    const GITHUB_TOKEN = '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';
+    
+    const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${DATA_REPO}/issues/${ISSUE_NUMBER}`;
+    
+    let stampsData = [];
+    let currentPage = 1;
+    let searchKeyword = "";
+    let saveTimer = null;
+    let pollingInterval = null;
+    const PAGE_SIZE = 15;
+    
+    const columns = ["sealCode", "sealName", "sealType", "receiptStatus", "location", 
+                     "cancellationStatus", "cancellationLocation", "borrowStatus", "borrowMonth", "borrower", "operator"];
+    
+    function showToast(msg, isErr = false) {
+        let t = document.querySelector('.toast-msg');
+        if(t) t.remove();
+        t = document.createElement('div');
+        t.className = 'toast-msg';
+        t.textContent = msg;
+        if(isErr) t.style.background = '#c62828';
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2500);
+    }
+    
+    function updateStatus(text, type = 'normal') {
+        const badge = document.getElementById('syncStatus');
+        badge.innerHTML = type === 'syncing' ? '🔄 ' + text : (type === 'error' ? '⚠️ ' + text : '🌐 ' + text);
+        badge.className = 'sync-badge';
+        if(type === 'syncing') badge.classList.add('syncing');
+        if(type === 'error') badge.classList.add('error');
+    }
+    
+    async function loadFromCloud() {
+        updateStatus('同步中...', 'syncing');
+        try {
+            const response = await fetch(API_URL, {
+                headers: {
+                    'Authorization': `token ${GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            if(response.ok) {
+                const issue = await response.json();
+                let data = [];
+                try {
+                    data = JSON.parse(issue.body || '[]');
+                } catch(e) {
+                    data = [];
+                }
+                stampsData = Array.isArray(data) ? data : [];
+                stampsData.forEach(item => {
+                    if(!item.id) item.id = Date.now() + Math.random().toString(36);
+                    if(item.receiptStatus === undefined) item.receiptStatus = '无';
+                    if(item.cancellationStatus === undefined) item.cancellationStatus = '未注销';
+                });
+                renderTable();
+                updateStatus('已同步', 'normal');
+                return true;
+            } else {
+                stampsData = [];
+                renderTable();
+                updateStatus('已同步', 'normal');
+                return true;
+            }
+        } catch(e) {
+            console.error('加载失败', e);
+            updateStatus('连接失败', 'error');
+            showToast('连接GitHub失败，请检查网络', true);
+        }
+        return false;
+    }
+    
+    async function saveToCloud() {
+        if(!stampsData) return;
+        updateStatus('保存中...', 'syncing');
+        try {
+            const response = await fetch(API_URL, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `token ${GITHUB_TOKEN}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({
+                    body: JSON.stringify(stampsData, null, 2)
+                })
+            });
+            if(response.ok) {
+                updateStatus('已同步', 'normal');
+                return true;
+            } else {
+                updateStatus('保存失败', 'error');
+                showToast('保存失败，请检查Token权限', true);
+            }
+        } catch(e) {
+            console.error('保存失败', e);
+            updateStatus('保存失败', 'error');
+        }
+        return false;
+    }
+    
+    function debouncedSave() {
+        if(saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveToCloud();
+        }, 500);
+    }
+    
+    function mutateData(newData) {
+        stampsData = newData;
+        renderTable();
+        debouncedSave();
+    }
+    
+    function startPolling() {
+        if(pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = setInterval(async () => {
+            try {
+                const response = await fetch(API_URL, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                if(response.ok) {
+                    const issue = await response.json();
+                    let remoteData = [];
+                    try {
+                        remoteData = JSON.parse(issue.body || '[]');
+                    } catch(e) {}
+                    if(JSON.stringify(remoteData) !== JSON.stringify(stampsData)) {
+                        stampsData = remoteData;
+                        renderTable();
+                        showToast('📡 检测到其他用户的修改，已自动更新');
+                    }
+                }
+            } catch(e) {}
+        }, 4000);
+    }
+    
+    function escapeHtml(s) { if(!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+    
+    function matches(item, kw) {
+        if(!kw) return true;
+        const lk = kw.toLowerCase();
+        return columns.some(col => item[col] && String(item[col]).toLowerCase().includes(lk));
+    }
+    
+    function getFiltered() { return stampsData.filter(i => matches(i, searchKeyword)); }
+    
+    function getPageData() {
+        let filtered = getFiltered();
+        let total = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+        if(currentPage > total) currentPage = total;
+        return filtered.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+    }
+    
+    function renderTable() {
+        let filtered = getFiltered();
+        let totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+        let pageData = getPageData();
+        let tbody = document.getElementById('tableBody');
+        let kw = searchKeyword;
+        
+        if(!pageData.length) {
+            tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${filtered.length===0 && kw ? '🔍 未找到匹配结果' : '📭 暂无数据，请导入Excel或新增印章'}</td></tr>`;
+            document.getElementById('totalCount').innerText = `共 ${filtered.length} 枚印章`;
+            document.getElementById('pageInfo').innerText = `第${currentPage}/${totalPages}页`;
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            return;
+        }
+        
+        let html = '';
+        for(let item of pageData) {
+            let borrowClass = item.borrowStatus === '已借出' ? 'status-borrowed' : 'status-returned';
+            let cancelClass = item.cancellationStatus === '已注销' ? 'cancelled' : 'active';
+            let receiptText = item.receiptStatus === '有' ? '✅ 有' : (item.receiptStatus === '没有' ? '❌ 没有' : '无');
+            
+            function highlight(text) {
+                if(!kw || !text) return escapeHtml(text);
+                let regex = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                return escapeHtml(String(text)).replace(regex, '<span class="highlight">$1</span>');
+            }
+            
+            html += `<tr data-id="${item.id}">`;
+            html += `<td>${highlight(item.sealCode)}</td><td>${highlight(item.sealName)}</td><td>${highlight(item.sealType)}</td>`;
+            html += `<td><span style="padding:2px 10px; border-radius:30px; background:#e9f5ff;">${highlight(receiptText)}</span></td>`;
+            html += `<td>${highlight(item.location)}</td>`;
+            html += `<td><span class="cancellation-badge ${cancelClass}">${highlight(item.cancellationStatus || '未注销')}</span></td>`;
+            html += `<td>${highlight(item.cancellationLocation)}</td>`;
+            html += `<td><span class="status-badge ${borrowClass}">${highlight(item.borrowStatus || '已归还')}</span></td>`;
+            html += `<td>${highlight(item.borrowMonth)}</td>`;
+            html += `<td>${highlight(item.borrower)}</td>`;
+            html += `<td>${highlight(item.operator)}</td>`;
+            html += `</tr>`;
+        }
+        tbody.innerHTML = html;
+        document.getElementById('totalCount').innerText = `共 ${filtered.length} 枚印章${kw ? ` (匹配"${kw}")` : ''}`;
+        document.getElementById('pageInfo').innerText = `第${currentPage}/${totalPages}页`;
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        
+        document.querySelectorAll('#tableBody tr[data-id]').forEach(row => {
+            row.oncontextmenu = (e) => {
+                e.preventDefault();
+                let id = row.dataset.id;
+                let stamp = stampsData.find(s => s.id === id);
+                if(stamp) showContextMenu(e.clientX, e.clientY, stamp);
+            };
+        });
+    }
+    
+    let currentMenu = null;
+    function showContextMenu(x, y, stamp) {
+        if(currentMenu) currentMenu.remove();
+        let menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        menu.innerHTML = `<div class="menu-edit">✏️ 修改</div><div class="menu-delete">🗑️ 删除</div>`;
+        document.body.appendChild(menu);
+        currentMenu = menu;
+        menu.querySelector('.menu-edit').onclick = () => { openModal(stamp, false); closeMenu(); };
+        menu.querySelector('.menu-delete').onclick = () => {
+            if(confirm(`删除印章「${stamp.sealName}」？`)) mutateData(stampsData.filter(s => s.id !== stamp.id));
+            closeMenu();
+        };
+        let close = (e) => { if(!menu.contains(e.target)) closeMenu(); };
+        setTimeout(() => document.addEventListener('click', close), 10);
+        function closeMenu() { document.removeEventListener('click', close); if(currentMenu) currentMenu.remove(); currentMenu = null; }
+    }
+    
+    function openModal(stamp, isNew = false) {
+        let modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        let fields = [
+            ['sealCode', '印章编号 *'], ['sealName', '印章名字 *'], ['sealType', '印章类型'],
+            ['receiptStatus', '公章回执单'], ['location', '存放位置'], ['cancellationStatus', '注销状态'],
+            ['cancellationLocation', '注销章位置'], ['borrowStatus', '借出状态'], ['borrowMonth', '借出月份'],
+            ['borrower', '借出人'], ['operator', '处理人']
+        ];
+        let formHtml = '';
+        for(let [key, label] of fields) {
+            if(key === 'receiptStatus') {
+                formHtml += `<div class="form-row"><label>${label}</label><select id="edit_${key}"><option value="有" ${stamp[key]==='有'?'selected':''}>有</option><option value="没有" ${stamp[key]==='没有'?'selected':''}>没有</option><option value="无" ${stamp[key]==='无'||!stamp[key]?'selected':''}>无</option></select></div>`;
+            } else if(key === 'cancellationStatus') {
+                formHtml += `<div class="form-row"><label>${label}</label><select id="edit_${key}"><option value="未注销" ${stamp[key]!=='已注销'?'selected':''}>未注销</option><option value="已注销" ${stamp[key]==='已注销'?'selected':''}>已注销</option></select></div>`;
+            } else if(key === 'borrowStatus') {
+                formHtml += `<div class="form-row"><label>${label}</label><select id="edit_${key}"><option value="已借出" ${stamp[key]==='已借出'?'selected':''}>已借出</option><option value="已归还" ${stamp[key]!=='已借出'?'selected':''}>已归还</option></select></div>`;
+            } else {
+                formHtml += `<div class="form-row"><label>${label}</label><input id="edit_${key}" value="${escapeHtml(stamp[key] || '')}"></div>`;
+            }
+        }
+        modal.innerHTML = `<div class="modal"><h3>${isNew ? '新增印章' : '修改印章'}</h3>${formHtml}<div class="modal-buttons"><button class="btn btn-outline" id="cancelModal">取消</button><button class="btn btn-primary" id="saveModal">${isNew ? '创建' : '保存'}</button></div></div>`;
+        document.body.appendChild(modal);
+        
+        modal.querySelector('#saveModal').onclick = () => {
+            let newStamp = { id: isNew ? Date.now() + Math.random().toString(36) : stamp.id };
+            for(let [key] of fields) {
+                let input = modal.querySelector(`#edit_${key}`);
+                if(input) newStamp[key] = input.value;
+            }
+            if(!newStamp.sealCode || !newStamp.sealName) { alert('印章编号和名称不能为空'); return; }
+            if(isNew) mutateData([...stampsData, newStamp]);
+            else mutateData(stampsData.map(s => s.id === stamp.id ? newStamp : s));
+            modal.remove();
+            showToast(isNew ? '✅ 已新增' : '✏️ 已修改');
+        };
+        modal.querySelector('#cancelModal').onclick = () => modal.remove();
+    }
+    
+    function importExcel(file) {
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            let workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            let rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: "", raw: true });
+            if(rows.length < 2) { alert('无数据'); return; }
+            let headers = rows[0];
+            let idx = {};
+            const map = {"印章编号":"sealCode","印章名字":"sealName","印章类型":"sealType","公章回执单":"receiptStatus","存放位置":"location","注销状态":"cancellationStatus","注销章位置":"cancellationLocation","借出状态":"borrowStatus","借出月份":"borrowMonth","借出人":"borrower","处理人":"operator"};
+            for(let i=0;i<headers.length;i++) if(map[String(headers[i]).trim()]) idx[map[String(headers[i]).trim()]] = i;
+            let newStamps = [];
+            for(let i=1;i<rows.length;i++) {
+                let row = rows[i];
+                if(!row || row.length===0) continue;
+                let obj = { id: Date.now() + i + Math.random().toString(36) };
+                for(let key of columns) {
+                    let col = idx[key];
+                    if(col!==undefined && row[col]!==undefined && row[col]!=='') obj[key] = String(row[col]).trim();
+                    else if(key==='receiptStatus') obj[key]='无';
+                    else if(key==='cancellationStatus') obj[key]='未注销';
+                    else obj[key]='';
+                }
+                newStamps.push(obj);
+            }
+            if(newStamps.length) mutateData([...stampsData, ...newStamps]);
+            showToast(`导入 ${newStamps.length} 条记录`);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+    
+    function downloadTemplate() {
+        let ws = XLSX.utils.aoa_to_sheet([['印章编号','印章名字','印章类型','公章回执单','存放位置','注销状态','注销章位置','借出状态','借出月份','借出人','处理人']]);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '模板');
+        XLSX.writeFile(wb, '印章模板.xlsx');
+    }
+    
+    function bindEvents() {
+        document.getElementById('excelInput').onchange = (e) => { if(e.target.files[0]) importExcel(e.target.files[0]); e.target.value = ''; };
+        document.getElementById('exportBtn').onclick = downloadTemplate;
+        document.getElementById('addBtn').onclick = () => openModal({}, true);
+        document.getElementById('searchInput').oninput = () => { searchKeyword = document.getElementById('searchInput').value; currentPage = 1; renderTable(); };
+        document.getElementById('clearSearch').onclick = () => { document.getElementById('searchInput').value = ''; searchKeyword = ''; currentPage = 1; renderTable(); };
+        document.getElementById('prevBtn').onclick = () => { if(currentPage > 1) { currentPage--; renderTable(); } };
+        document.getElementById('nextBtn').onclick = () => { let max = Math.ceil(getFiltered().length / PAGE_SIZE); if(currentPage < max) { currentPage++; renderTable(); } };
+    }
+    
+    async function init() {
+        bindEvents();
+        await loadFromCloud();
+        startPolling();
+        showToast('✨ 系统已就绪，数据实时同步到GitHub');
+    }
+    
+    init();
+</script>
+</body>
+</html>
