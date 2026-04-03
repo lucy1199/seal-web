@@ -128,7 +128,7 @@
     <div class="header">
         <div class="title-area">
             <h1>📋 印章管理系统</h1>
-            <p>GitHub实时同步 · 多人协作</p>
+            <p>JSONBin实时同步 · 多人协作</p>
         </div>
         <div class="action-bar">
             <span class="sync-badge" id="syncStatus">🌐 实时同步中</span>
@@ -169,18 +169,16 @@
         <div><button class="page-btn" id="prevBtn" disabled>‹ 上一页</button><button class="page-btn" id="nextBtn" disabled>下一页 ›</button></div>
     </div>
     <div class="info-footer">
-        💡 右键点击任意行 → 修改/删除 | 所有修改自动同步到GitHub，多人实时共享
+        💡 右键点击任意行 → 修改/删除 | 所有修改自动同步，多人实时共享
     </div>
 </div>
 
 <script>
-    // ==================== GitHub 配置（已配置好） ====================
-    const GITHUB_USERNAME = 'lucy1199';
-    const DATA_REPO = 'seal-data';
-    const ISSUE_NUMBER = 1;
-    const GITHUB_TOKEN = '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';
-    
-    const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${DATA_REPO}/issues/${ISSUE_NUMBER}`;
+    // ==================== JSONBin 配置 ====================
+    const BIN_ID = '69cd148baaba882197b4dc6a';
+    const MASTER_KEY = '$2a$10$vjg892mPJJ1RUIV5Zt14Vecn.gtzprUcBpE5jaHC82mf4M.0bi/C';
+    const READ_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}/latest`;
+    const WRITE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
     
     let stampsData = [];
     let currentPage = 1;
@@ -214,21 +212,12 @@
     async function loadFromCloud() {
         updateStatus('同步中...', 'syncing');
         try {
-            const response = await fetch(API_URL, {
-                headers: {
-                    'Authorization': `token ${GITHUB_TOKEN}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                }
+            const response = await fetch(READ_URL, {
+                headers: { 'X-Master-Key': MASTER_KEY }
             });
             if(response.ok) {
-                const issue = await response.json();
-                let data = [];
-                try {
-                    data = JSON.parse(issue.body || '[]');
-                } catch(e) {
-                    data = [];
-                }
-                stampsData = Array.isArray(data) ? data : [];
+                const result = await response.json();
+                stampsData = Array.isArray(result.record) ? result.record : [];
                 stampsData.forEach(item => {
                     if(!item.id) item.id = Date.now() + Math.random().toString(36);
                     if(item.receiptStatus === undefined) item.receiptStatus = '无';
@@ -246,7 +235,7 @@
         } catch(e) {
             console.error('加载失败', e);
             updateStatus('连接失败', 'error');
-            showToast('连接GitHub失败，请检查网络', true);
+            showToast('连接JSONBin失败，请检查网络', true);
         }
         return false;
     }
@@ -255,23 +244,20 @@
         if(!stampsData) return;
         updateStatus('保存中...', 'syncing');
         try {
-            const response = await fetch(API_URL, {
-                method: 'PATCH',
+            const response = await fetch(WRITE_URL, {
+                method: 'PUT',
                 headers: {
-                    'Authorization': `token ${GITHUB_TOKEN}`,
                     'Content-Type': 'application/json',
-                    'Accept': 'application/vnd.github.v3+json'
+                    'X-Master-Key': MASTER_KEY
                 },
-                body: JSON.stringify({
-                    body: JSON.stringify(stampsData, null, 2)
-                })
+                body: JSON.stringify(stampsData)
             });
             if(response.ok) {
                 updateStatus('已同步', 'normal');
                 return true;
             } else {
                 updateStatus('保存失败', 'error');
-                showToast('保存失败，请检查Token权限', true);
+                showToast('保存失败，请检查网络', true);
             }
         } catch(e) {
             console.error('保存失败', e);
@@ -297,18 +283,12 @@
         if(pollingInterval) clearInterval(pollingInterval);
         pollingInterval = setInterval(async () => {
             try {
-                const response = await fetch(API_URL, {
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
+                const response = await fetch(READ_URL, {
+                    headers: { 'X-Master-Key': MASTER_KEY }
                 });
                 if(response.ok) {
-                    const issue = await response.json();
-                    let remoteData = [];
-                    try {
-                        remoteData = JSON.parse(issue.body || '[]');
-                    } catch(e) {}
+                    const result = await response.json();
+                    const remoteData = result.record || [];
                     if(JSON.stringify(remoteData) !== JSON.stringify(stampsData)) {
                         stampsData = remoteData;
                         renderTable();
@@ -316,7 +296,7 @@
                     }
                 }
             } catch(e) {}
-        }, 4000);
+        }, 5000);
     }
     
     function escapeHtml(s) { if(!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
@@ -502,7 +482,7 @@
         bindEvents();
         await loadFromCloud();
         startPolling();
-        showToast('✨ 系统已就绪，数据实时同步到GitHub');
+        showToast('✨ 系统已就绪，数据实时同步到JSONBin');
     }
     
     init();
